@@ -97,6 +97,14 @@ struct FlightControlConfig {
   // compensate phase lag from rotor dynamics.
   float cyclic_phase_offset = 0.0f;
 
+  // Optional signed phase advance (cycles) added at high rotor speed.
+  // Disabled unless high_speed > low_speed. A signed advance avoids
+  // ambiguities at the modulo-one phase boundary (e.g. 0.49 -> 0.51).
+  // Calibrate with measured response; this does not identify phase online.
+  float cyclic_phase_low_speed = 0.0f;
+  float cyclic_phase_high_speed = 0.0f;
+  float cyclic_phase_high_advance = 0.0f;
+
   // Invert MCOUT command axes before cyclic mapping.
   bool invert_roll = false;
   bool invert_pitch = false;
@@ -153,6 +161,9 @@ struct FlightControlConfig {
     a->Visit(MJ_NVP(cyclic_schedule_high_speed));
     a->Visit(MJ_NVP(cyclic_schedule_low_torque_Nm));
     a->Visit(MJ_NVP(cyclic_phase_offset));
+    a->Visit(MJ_NVP(cyclic_phase_low_speed));
+    a->Visit(MJ_NVP(cyclic_phase_high_speed));
+    a->Visit(MJ_NVP(cyclic_phase_high_advance));
     a->Visit(MJ_NVP(invert_roll));
     a->Visit(MJ_NVP(invert_pitch));
     a->Visit(MJ_NVP(invert_yaw));
@@ -328,7 +339,7 @@ class FlightControlLogic {
     result.cyclic_phase =
         ((magnitude > 1e-6f) ?
          (std::atan2(roll, pitch) * k1OverTwoPi) : 0.0f) +
-        config.cyclic_phase_offset;
+        CyclicPhaseOffset(config, abs_output_velocity);
 
     return result;
   }
@@ -440,6 +451,26 @@ class FlightControlLogic {
 
   static float Limit(float value, float min, float max) {
     return std::min(max, std::max(min, value));
+  }
+
+  static float CyclicPhaseOffset(const FlightControlConfig& config,
+                                 float abs_output_velocity) {
+    const float low = config.cyclic_phase_low_speed;
+    const float high = config.cyclic_phase_high_speed;
+    const float advance = config.cyclic_phase_high_advance;
+
+    // Preserve the original constant-offset behavior if not enabled,
+    // including when an optional schedule parameter is malformed.
+    if (!(std::isfinite(low) && std::isfinite(high) &&
+          std::isfinite(advance) && std::isfinite(abs_output_velocity)) ||
+        !(low >= 0.0f && high > low)) {
+      return config.cyclic_phase_offset;
+    }
+
+    const float speed = std::abs(abs_output_velocity);
+    const float fraction = Limit((speed - low) / (high - low),
+                                 0.0f, 1.0f);
+    return config.cyclic_phase_offset + fraction * advance;
   }
 
   static float CyclicMaxTorque(const FlightControlConfig& config,
