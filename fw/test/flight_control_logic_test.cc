@@ -279,6 +279,28 @@ BOOST_AUTO_TEST_CASE(FlightMapPhaseSpeedAdvance) {
   BOOST_TEST(FlightControlLogic::Map(
       frame, config, std::numeric_limits<float>::infinity()).cyclic_phase ==
              0.49f, tt::tolerance(1e-5f));
+  // Finite extreme endpoints must not overflow the interpolation
+  // denominator or accidentally disable the schedule.
+  config.cyclic_phase_low_speed =
+      -0.0f;
+  config.cyclic_phase_high_speed =
+      std::numeric_limits<float>::max();
+  config.cyclic_phase_high_advance = 0.125f;
+  BOOST_TEST(FlightControlLogic::Map(
+      frame, config, std::numeric_limits<float>::max()).cyclic_phase ==
+             0.615f, tt::tolerance(1e-5f));
+
+  // Overflowing the scheduled result falls back to the configured
+  // phase offset rather than passing infinity into fixed-point phase.
+  config.cyclic_phase_low_speed = 0.0f;
+  config.cyclic_phase_high_speed = 10.0f;
+  config.cyclic_phase_offset = std::numeric_limits<float>::max();
+  config.cyclic_phase_high_advance =
+      std::numeric_limits<float>::max();
+  BOOST_TEST(std::isfinite(
+      FlightControlLogic::Map(frame, config, 10.0f).cyclic_phase));
+  BOOST_TEST(FlightControlLogic::Map(frame, config, 10.0f).cyclic_phase ==
+             config.cyclic_phase_offset);
 }
 
 BOOST_AUTO_TEST_CASE(FlightMapClampsAndSanitizes) {
