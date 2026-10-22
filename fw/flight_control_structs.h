@@ -467,10 +467,23 @@ class FlightControlLogic {
       return config.cyclic_phase_offset;
     }
 
-    const float speed = std::abs(abs_output_velocity);
-    const float fraction = Limit((speed - low) / (high - low),
-                                 0.0f, 1.0f);
-    return config.cyclic_phase_offset + fraction * advance;
+    // Evaluate interpolation in double precision to avoid overflowing
+    // the speed interval for finite but extreme configuration values.
+    const double speed = std::abs(static_cast<double>(abs_output_velocity));
+    const double fraction = std::max(
+        0.0, std::min(1.0,
+        (speed - static_cast<double>(low)) /
+        (static_cast<double>(high) - static_cast<double>(low))));
+    const double offset = static_cast<double>(config.cyclic_phase_offset) +
+                          fraction * static_cast<double>(advance);
+    // Invalid or unrepresentable scheduled results must not reach
+    // the cyclic phase encoder. Retain the preexisting offset.
+    if (!std::isfinite(offset) ||
+        std::abs(offset) > static_cast<double>(
+            std::numeric_limits<float>::max())) {
+      return config.cyclic_phase_offset;
+    }
+    return static_cast<float>(offset);
   }
 
   static float CyclicMaxTorque(const FlightControlConfig& config,
