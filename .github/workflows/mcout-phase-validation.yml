@@ -1,0 +1,18 @@
+name: MCOUT phase validation
+on:
+  push:
+    branches:
+      - feat/mcout-speed-phase-compensation
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Host tests
+        run: tools/bazel test --config=host //:host
+      - name: Target firmware build
+        run: tools/bazel build --config=target //:target
