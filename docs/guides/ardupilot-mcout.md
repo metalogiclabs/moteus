@@ -116,8 +116,17 @@ velocity = max(idle_velocity, throttle * throttle_max_velocity)
 base_Nm  = max(idle_torque_Nm, throttle * throttle_max_torque_Nm)
 cyclic_max = speed schedule, or cyclic_max_torque_Nm when disabled
 amp_Nm   = min(1, sqrt(r^2 + p^2)) * cyclic_max
-phase    = atan2(r, p) / (2*pi) + cyclic_phase_offset   [cycles]
-```
+phase    = atan2(r, p) / (2*pi) + cyclic_phase_offset
+         + clamp((abs(output_speed) - cyclic_phase_low_speed)
+                 / (cyclic_phase_high_speed - cyclic_phase_low_speed),
+                 0, 1) * cyclic_phase_high_advance   [cycles]
+\`\`\`
+
+The final phase-schedule term is included only when its configured
+endpoints and advance are finite, the measured speed is finite, and
+`0 <= low_speed < high_speed`. Otherwise the original constant phase
+offset applies. Scheduled outputs that cannot be represented as finite
+floating-point values also retain the constant offset.
 
 In the default velocity throttle mode this mirrors the bench
 scripts: the servo tracks `velocity` through the kd term
